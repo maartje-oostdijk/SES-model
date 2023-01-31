@@ -22,12 +22,14 @@ def deriv(
     ft,
     rt,
     fr,
-    sp,
-    mb,
+    #sp,
     #cd,
     #td,
     #tx,
     #pi,
+    alpha,
+    gamma,
+    beta,
     cost,
     q,
     #uptake,
@@ -43,28 +45,30 @@ def deriv(
     global dSd_0
 
     # population dynamics of zooplankton & mesopelagic fish
-    dMd_t = r * M* (1 - (M / K)) - mm * M - C ##logistic growth function mesopelagic fish #possibly change mm to m, and mesopelgic fish M to B?
+    dMd_t = r * M*(1 - (M / K)) - mm * M - C  ##logistic growth function mesopelagic fish #possibly change mm to m, and mesopelgic fish M to B?
     
     # have a metabolic rate for the entire population of mesopelagic fish, not base this on the growth rate!!!
     # carbon sequestration part mesopelagic fish
     dMMd_t = mm * M - MM / mt  # deadfall MF #ALL THE DECAY TERMS ARE WRONG!!!!!
-    dFMd_t = fr * mb *M - FM / ft  # fecal pellets  #DO THE DECAY TERMS NOW MAKE SENSE
-    dRMd_t = (0.8 - fr) * mb * M - RM / rt  # respiration MF #ALL THE DECAY TERMS ARE WRONG!!!! 0.9 is the assumed total carbon budget that does not go to growth but either to defecation or respiration, should be separate parameter.
-    
+    dFMd_t = fr * M * r- FM / ft  # fecal pellets  #DO THE DECAY TERMS NOW MAKE SENSE
+    dRMd_t = (0.8 - fr) * M *r - RM / rt  # respiration MF #ALL THE DECAY TERMS ARE WRONG!!!! 0.9 is the assumed total carbon budget that does not go to growth but either to defecation or respiration, should be separate parameter.
+    # using the growth rate here is tricky, as it also includes reproduction, will be good to ask someone more used to ecological modeling on how to do this
     #and fr should not just be multipled by M, but by some kind of intrinsic growth rate/metabolic rate
     
     # total seq
     dSd_t = dMMd_t + dFMd_t + dRMd_t
     # social cost of carbon
     dSCCd_t = S * scc * co2 #may be better change scc to something thats not the same as the outcome variable
-    
-    #E^(a(y^(1/b)*(q*E*M)^((b-1)/b)-cost*E)) effort function from Fryxell et al., 2017
-    
+    #dEd_t = E^(alpha*(gamma^(1/beta)*(q*E*M)^((beta-1)/beta)-cost*E)) #effort function from Fryxell
+    dEd_t = E* np.exp(alpha*(pow(gamma,(1/beta))*pow((q*E*M),((beta-1)/beta))-cost*E)) #LAURA can hopefully help making sure I have the right notation in how to get the difference between the notation of dt+1 and the notation here that just needs to be dt, right? or no...
+     #dEd_t = E^(a(y^(1/b)*(q*E*M)^((b-1)/b)-cost*E)) #effort function from Fryxell et al., 2017
+ #et al., 2017
     # effort function
-    
-    
-    #dEd_t = 0.00001
-    #cost is just continuous cost per unit effort, there is no set up cost included,  according to OA theory is 0, but to make it more realistic we'll have a range, 
+    #dEd_t = if ((sp*(E*q*M)-pi)/(cost*E)>0):
+    #(sp*(E*q*M)-pi)/(cost*E)
+    #else:
+    #dEd_t = 0
+     #cost is just continuous cost per unit effort, there is no set up cost included, pi according to OA theory is 0, but to make it more realistic we'll have a range, 
     # sp is sale price
     # profitability & effort
     #prof = (sp - (cd / td)) * (1 - tx)# profitability is sale price (euro/tonne) caught -(cost per day devided by ton per day) times tax rate #KICKOUTTAX!!!
@@ -83,7 +87,7 @@ def deriv(
     if t==0:
         dSd_0 = dSd_t#value of mesopelagic population when its not fished
     
-    dTPd_t = sp*E * q * M-cost*E #is this the way to caluclate total profits of the fishery now?
+    dTPd_t = 1*C-cost*dEd_t #is this the way to caluclate total profits of the fishery now? 1 is not correct as it should include price which should shift with profit
     
     decision_start = 1
     if (
@@ -98,16 +102,9 @@ def deriv(
     	decision_e = decision_l
    
     quota = q_a * decision_e #q_a is an adviced quota which is not yet defined decision is the multiplier because of lobby & environmental concern. 
+
+    dCd_t = min(E * q * M, quota * M)  # catch with maximum of catch being quota
     
-    if (
-    	E*q*M > quota*M
-    	):
-    		  dEd_t = 0
-    else:
-    	dEd_t = (sp*(E*q*M)-cost*E)
-    	
-    #dCd_t = min(, quota * M)  # I think this is wrong as it is not delta catch
-    dCd_t = E * q * M
 
     #dTPd_t = prof*C*1000000000
     #dPd_t = prof*C
@@ -120,24 +117,27 @@ def M_model(
     FM0=0,
     RM0=0,
     S0=0,
-    E0=0.00000001,
+    E0=0.0001,
     C0=0,
     TP0=0,
     SCC0=0,
-    K=6,
-    r=6,
+    K=3,
+    r=4,
     mm=0.67,
     mt=851,
     ft=599,
     rt=103,
     fr=0.25,
-    mb = 5,
-    sp=300000000000,
-    cost= 30000,
+    #sp=0.003,
+    #pi = 0,
+    cost= 0.4,
+    alpha = 0.3,
+    gamma = 0.01,
+    beta = 1.5,
     #cd=17000,
     #td=200,
     #tx=0.2,
-    q=0.0000000066,
+    q=0.002,
     scc=100000000000,
     co2=3.67,
     pl=150000,#this parameter is not grounded in literature yet
@@ -159,8 +159,7 @@ def M_model(
     mm : float
             mortality rate of mesopelagic fish based on Anderson et al., 2019
     rt : float
-            sequestration time mesopelagic res
-            ration, average time in Pinti et al., 2022
+            sequestration time mesopelagic respiration, average time in Pinti et al., 2022
     ft : float
             sequestration time mesopelagic fecal pellets, average time in Pinti et al., 2022
     fr : float
@@ -210,12 +209,15 @@ def M_model(
             ft,
             rt,
             fr,
-            mb,
-            sp,
+            #sp,
             #td,
             #cd
             #tx,
             q,#tonnes per day
+            #pi,
+            alpha,
+            gamma,
+            beta,
             cost,
             #uptake,
             q_a,
@@ -240,5 +242,3 @@ def M_model(
         "SCC": SCC,
         "total_profit":TP,
     }
-    
-  
