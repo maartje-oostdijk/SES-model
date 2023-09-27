@@ -5,13 +5,13 @@ from ema_workbench.connectors.pysd_connector import PysdModel
 
 from ema_workbench.analysis.plotting import lines, Density
 
-def PredPrey(alpha=0.0003, #effort scalar Fryxell et al., 2017
-		initial_gamma=200, #demand, as unit price when havest is 1, I multiplied this by 1,000,000,000 since our model is in giga ton but need to check with Laura
-		demand_mult = 1.024,
-		beta=0.0000014, #price sensitivity
+def MEESO(alpha=0.3, #effort scalar Fryxell et al., 2017
+		initial_gamma=350, #demand, as unit price when havest is 1,
+		demand_mult = 1.004,
+		beta=0.0005345, #price sensitivity
              	q_e=200, #catchability 200 tones per unit effort (1 boat 1 day)
-             	initial_meeso=2300000000,#*1000000000, #initial mesopelagic biomass, Anderson et al., 2019
-             	initial_effort=0.010, #initial effort, mini amount of fishing in Norway, check if this times q times biomass would be reasonable level
+             	initial_meeso=3000000000,#*1000000000, #initial mesopelagic biomass, Anderson et al., 2019
+             	initial_effort=0.00010, #initial effort, mini amount of fishing in Norway, check if this times q times biomass would be reasonable level
              	initial_profit=0, #initial profit
              	initial_perc=0, #initial profit
              	initial_mort=0,
@@ -27,9 +27,9 @@ def PredPrey(alpha=0.0003, #effort scalar Fryxell et al., 2017
              	initial_total_scc_pr =0,
              	initial_cum_cost_harvest=0,
              	cost = 30000, #cost of unit effort 30,000$ for a day at sea
-             	rmax = 1.2, #exponential growth rate mesopelagic fish, i.e. ln(normal growth rate)
-             	m = 0.67, #mortality rate mesopelagic fish
-             	K=3500000000,#*1000000000,#carrying capacity mesopelagic fish
+             	rmax = 1.8, #exponential growth rate mesopelagic fish, i.e. ln(normal growth rate)
+             	#m = 0.2, #mortality rate mesopelagic fish
+             	K=3000000000,#*1000000000,#carrying capacity mesopelagic fish
              	#sp = 300*1000000000, #initial unit price mesopelagic harvest
              	pl = 10, # profit level where mesopelagic fishing becomes interesting for lobby, placeholder(!)
              	lobby = 1.2, #lobby multiplier of quota
@@ -37,15 +37,19 @@ def PredPrey(alpha=0.0003, #effort scalar Fryxell et al., 2017
              	el = 0.5,#loss of carbon sequestration ecosystem function at which decision maker becomes concerned
              	q_a=0.3, #adviced quota
              	mt=851,
+             	m=0,
              	ft=599,
              	rt=103,
-             	fr = 0.2,
-             	mb = 5,#metabolic rate, based on that a mesopelagic fish would eat its own bodyweight 5 times to replace its carbon in one year (Anderson et al., 2019)
-             	cv = 7.7, #scalar from mesopelagic wet weigth to carbon Anderson et al., 2019
+             	#fr = 0.2,
+             	m_f = 0.33,
+             	f_f = 0.35,
+             	r_f = 0.32,
+             	#mb = 5,#metabolic rate, based on that a mesopelagic fish would eat its own bodyweight 5 times to replace its carbon in one year (Anderson et al., 2019)
+             	cv = 0.77, #scalar from mesopelagic wet weigth to carbon injected Davison et al 2013
              	scc = 116, #000000000,#/1000000000,#check 116 *1000,000,000 ($ton * giga ton)
              	co2=3.67,#conversion from carbon to co2
              	dt=0.25, #timestep
-             	final_time=50,
+             	final_time=12.5,
              	reps =1):
 
     #Initial values
@@ -104,54 +108,69 @@ def PredPrey(alpha=0.0003, #effort scalar Fryxell et al., 2017
             	decision_e = decision_l #to implement decision_e check old model
    	    #q_a is an adviced quota which is not yet defined decision is the multiplier because of lobby & environmental concern. 
             quota = q_a * decision_e
-            
+            #scenario with 20 million per year limit
+            #IMPLEMENT SOME FLAG HERE TO SWITCH TO 'REALISTIC' SCENARIO
+            #quota = 20000000/meeso[r,t]
             
             gamma[r, t+1]= gamma[r, t] * demand_mult #add a demand multiplier to the model of 1.2 and 1.5 based on increased aquaculture consumption and make Gamma into a variable not a float
             #if then else to make sure that they don't keep increasing effort when quota is reached
-            if (t<2):
+            if t<2 or q*effort[r,t]*meeso[r,t]<100:
             	p = gamma[r, t]
             else:
-            	p = gamma[r, t] - beta * min(q*effort[r,t]*meeso[r,t],quota*meeso[r,t])
+            	p = max(gamma[r, t] * (harvest[r, t]**(-1*beta)),0)
             
-            q = q_e/initial_meeso
+            #gamma*I(quantity^(-1*b)), data=trade, start = list(gamma=100,b=-0.14), trace = T) 
             
-            if ((effort[r,t] *  meeso[r,t] * q < quota * meeso[r,t]) and t >5): 
-            	effort[r,t+1] = max(effort[r,t] + alpha*(p*q*effort[r,t]*meeso[r,t]-cost*effort[r,t]),0)#Fryxell et al 2017
-
-            else: 
-            	effort[r,t+1] = effort[r,t]
-            	
-            if ((p*q*effort[r,t]*meeso[r,t]-cost*effort[r,t])<0): 
-            	effort[r,t+1] = max(effort[r,t] + alpha*(p*q*effort[r,t]*meeso[r,t]-cost*effort[r,t]),0)#Fryxell et al 2017
-            	
-            #calculate pristine baseline
-            prist_meeso_baseline[r,t+1] = max(prist_meeso_baseline[r,t] * np.exp(rmax*(1-prist_meeso_baseline[r,t]/K))-m*prist_meeso_baseline[r,t],0)#no catches
-            #rickert growth model:
-            meeso[r,t+1] = max(meeso[r,t] * np.exp(rmax*(1-meeso[r,t]/K))-min(q*effort[r,t]*meeso[r,t],quota*meeso[r,t])-m*meeso[r,t],0)#harvest is capped by quota
-            #harvest
-            harvest[r, t+1] = harvest[r, t] + min(q*effort[r,t]*meeso[r,t],quota*meeso[r,t])
-
+            q = q_e/K
+            
+            
             #profit levels
-            profit[r,t+1] = profit[r,t] + p*harvest[r, t+1]-effort[r,t]*cost
-            perc[r,t+1]= (profit[r,t] + p*harvest[r, t+1]-effort[r,t]*cost)/((effort[r,t]*cost)+0.0001)
+            profit[r,t+1] = p*q*effort[r,t]*meeso[r,t]-cost*effort[r,t]
+            perc[r,t+1]= (p*harvest[r, t]-effort[r,t]*cost)/((effort[r,t]*cost)+0.0001)           
+            #if ((effort[r,t] *  meeso[r,t] * q < quota * meeso[r,t]) and t >5): 
+            #effort
+            effort[r,t+1] = max(min(effort[r,t] + alpha*profit[r,t], (meeso[r,t]*quota)/q/meeso[r,t]),0.1)#Fryxell et al 2017
+
+            #else: 
+            #effort[r,t+1] = effort[r,t]	
+            #if ((p*q*effort[r,t]*meeso[r,t]-cost*effort[r,t])<0): 
+            	#effort[r,t+1] = 0#Fryxell et al 2017
+           
+            #calculate pristine baseline
+            #prist_meeso_baseline[r,t+1] = max(prist_meeso_baseline[r,t] * np.exp(rmax*(1-prist_meeso_baseline[r,t]/K)),0)#no catches
+            #rickert growth model:
+            #meeso[r,t+1] = max(meeso[r,t] * np.exp(rmax*(1-meeso[r,t]/K))-min(q*effort[r,t]*meeso[r,t],quota*meeso[r,t]),0)#harvest is capped by quota
+            
+            #prist_meeso_baseline[r,t+1] = max(prist_meeso_baseline[r,t] * np.exp(rmax*(1-prist_meeso_baseline[r,t]/K))-m*prist_meeso_baseline[r,t],0)#no catches
+            prist_meeso_baseline[r,t+1] = max(prist_meeso_baseline[r,t] + rmax *prist_meeso_baseline[r,t]*(1-(prist_meeso_baseline[r,t]/K)),0)
+            #gordon schaefer surplus production model:
+            #meeso[r,t+1] = max(meeso[r,t] * np.exp(rmax*(1-meeso[r,t]/K))-min(q*effort[r,t]*meeso[r,t],quota*meeso[r,t])-m*meeso[r,t],0)#harvest is capped by quota
+            meeso[r,t+1] = max(meeso[r,t] + rmax * meeso[r,t]* (1-(meeso[r,t]/K))-harvest[r, t],0)#biomass + increase/decrease minus harvest 
+            
+            #harvest
+            #harvest[r, t+1] = harvest[r, t] + q*effort[r,t]*meeso[r,t]
+            harvest[r, t+1] = q*effort[r,t]*meeso[r,t]
+            
+
             
             #sequestration with harvesting
-            seq_mort[r,t+1] = seq_mort[r,t]* (1-(1/mt)) + m*meeso[r,t]*cv
-            #mortality * population level in previous time step minus total previous sequestration devided by time it takes to remineralise somehow this does not work well, the last term is resulting in a pattern in which there is basically no sequestration, which result in more sequestration in the fishing scenario versus the pristine without harvesting part of the model, and this is weird!
-            seq_fecal[r,t+1] = seq_fecal[r,t]* (1-(1/ft)) +  fr * mb * meeso[r,t]*cv#same as above but then fraction of metabolic rate/losses going to fecal pellets
-            seq_resp[r,t+1] = seq_resp[r,t]* (1-(1/rt)) +  (0.8-fr) * mb * meeso[r,t]*cv
+            seq_mort[r,t+1] = seq_mort[r,t]* (1-(1/mt)) + meeso[r,t]*cv*m_f #sequestration by mortality, as a fraction of the population based on rates published in Davison et al. 2013
+            seq_fecal[r,t+1] = seq_fecal[r,t]* (1-(1/ft)) +  meeso[r,t]*cv * f_f#same as above but then fraction of metabolic rate/losses going to fecal pellets
+            seq_resp[r,t+1] = seq_resp[r,t]* (1-(1/rt)) +  meeso[r,t]*cv*r_f
             #same as above but then fraction of metabolic rate/losses going to respiration
-            
+           
+            #add the different types of sequestration together:
             total_seq[r,t+1] = seq_mort[r,t+1]+seq_fecal[r,t+1]+seq_resp[r,t+1] 
-            #+seq_resp[r,t+1] #add the different types of sequestration together
             
-            #sequestration without harvesting/pristine population (ADD CONVERSION FROM WET WEIGHT TO CARBON)
-            seq_mort_pr[r,t+1] = seq_mort_pr[r,t]* (1-(1/mt)) + m*prist_meeso_baseline[r,t]*cv 
-            seq_fecal_pr[r,t+1] = seq_fecal_pr[r,t]* (1-(1/ft)) +  fr * mb * prist_meeso_baseline[r,t]*cv
-            seq_resp_pr[r,t+1] = seq_resp_pr[r,t]* (1-(1/rt)) +  (0.8-fr) * mb * prist_meeso_baseline[r,t]*cv
+            
+            #sequestration without harvesting/pristine population (don't need this anymore given that initial mesopelagic is the same as carrying capacity)
+            seq_mort_pr[r,t+1] = seq_mort_pr[r,t]* (1-(1/mt)) + prist_meeso_baseline[r,t]*cv*m_f
+            seq_fecal_pr[r,t+1] = seq_fecal_pr[r,t]* (1-(1/ft)) +  prist_meeso_baseline[r,t]*cv * f_f
+            seq_resp_pr[r,t+1] = seq_resp_pr[r,t]* (1-(1/rt)) +  prist_meeso_baseline[r,t]*cv*r_f
             
             total_seq_pr[r,t+1] = seq_mort_pr[r,t+1]+seq_fecal_pr[r,t+1]+seq_resp_pr[r,t+1] 
             #add value in terms of social cost of carbon! and think of a way to calculate the cost fishing in social cost of carbon
+            
             
             total_scc[r,t+1] = total_seq[r,t] * scc * co2 #total social cost of carbon, by multiplying total sequestration with cost of carbon and co2 conversion rate
             
@@ -167,6 +186,7 @@ def PredPrey(alpha=0.0003, #effort scalar Fryxell et al., 2017
     return {'TIME':sim_time,
             'effort':effort,
             'meeso':meeso,
+            'prist_meeso':prist_meeso_baseline,
             'catch':harvest,
             'sequestration':total_seq,
             'sequestration_pristine':total_seq_pr,
