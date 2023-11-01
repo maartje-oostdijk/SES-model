@@ -11,7 +11,7 @@ def MEESO(alpha=0.3, #effort scalar Fryxell et al., 2017
 		beta=0.0005345, #price sensitivity
              	q_e=200, #catchability 200 tones per unit effort (1 boat 1 day)
              	initial_meeso=3000000000,#*1000000000, #initial mesopelagic biomass, Anderson et al., 2019
-             	initial_effort=0.00010, #initial effort, mini amount of fishing in Norway, check if this times q times biomass would be reasonable level
+             	initial_effort=10, #initial effort, mini amount of fishing in Norway, 
              	initial_profit=0, #initial profit
              	initial_perc=0, #initial profit
              	initial_mort=0,
@@ -27,11 +27,11 @@ def MEESO(alpha=0.3, #effort scalar Fryxell et al., 2017
              	initial_total_scc_pr =0,
              	initial_cum_cost_harvest=0,
              	cost = 30000, #cost of unit effort 30,000$ for a day at sea
-             	rmax = 1.8, #exponential growth rate mesopelagic fish, i.e. ln(normal growth rate)
+             	rmax = 0.9, #exponential growth rate mesopelagic fish, i.e. ln(normal growth rate)
              	#m = 0.2, #mortality rate mesopelagic fish
              	K=3000000000,#*1000000000,#carrying capacity mesopelagic fish
              	#sp = 300*1000000000, #initial unit price mesopelagic harvest
-             	pl = 10, # profit level where mesopelagic fishing becomes interesting for lobby, placeholder(!)
+             	pl = 10, # profit level where mesopelagic fishing becomes interesting for , placeholder(!)
              	lobby = 1.2, #lobby multiplier of quota
              	env = 0.8, #environmental protection multiplier of quota
              	el = 0.5,#loss of carbon sequestration ecosystem function at which decision maker becomes concerned
@@ -46,10 +46,10 @@ def MEESO(alpha=0.3, #effort scalar Fryxell et al., 2017
              	r_f = 0.32,
              	#mb = 5,#metabolic rate, based on that a mesopelagic fish would eat its own bodyweight 5 times to replace its carbon in one year (Anderson et al., 2019)
              	cv = 0.77, #scalar from mesopelagic wet weigth to carbon injected Davison et al 2013
-             	scc = 116, #000000000,#/1000000000,#check 116 *1000,000,000 ($ton * giga ton)
+             	scc = 175, #000000000,#/1000000000,#check 116 *1000,000,000 ($ton * giga ton)
              	co2=3.67,#conversion from carbon to co2
-             	dt=0.25, #timestep
-             	final_time=12.5,
+             	dt=0.99999, #timestep
+             	final_time=51,
              	reps =1):
 
     #Initial values
@@ -98,11 +98,11 @@ def MEESO(alpha=0.3, #effort scalar Fryxell et al., 2017
 
 	#quota setting
             decision_start = 1
-            if (perc[r,t] > pl and t >10):  # base this number (pl) on e.g. blue whiting fishery profitability (Paoletti et al.2021)
+            if (perc[r,t] > pl and t >10):  # pl is based on stefc profitability of large pelagic vessels
             	decision_l = decision_start * lobby#industry lobby if profitability is high enough
             else:
             	decision_l = decision_start
-            if ((seq_resp[r,t]-seq_resp[r,t-1]) < seq_resp[r,10] * el and t>10):#laura please check if this makes sense
+            if ((seq_resp[r,t]-seq_resp[r,t-1]) < seq_resp[r,5] * el and t>5):#environmental concern if carbon sequestration is below a certain level
             	decision_e = decision_l * env
             else:#environmental protection once yearly rate of total sequestration by mesopelagic fish goes below a certain level
             	decision_e = decision_l #to implement decision_e check old model
@@ -114,7 +114,7 @@ def MEESO(alpha=0.3, #effort scalar Fryxell et al., 2017
             
             gamma[r, t+1]= gamma[r, t] * demand_mult #add a demand multiplier to the model of 1.2 and 1.5 based on increased aquaculture consumption and make Gamma into a variable not a float
             #if then else to make sure that they don't keep increasing effort when quota is reached
-            if t<2 or q*effort[r,t]*meeso[r,t]<100:
+            if t<2 or q*effort[r,t]*meeso[r,t]<10:
             	p = gamma[r, t]
             else:
             	p = max(gamma[r, t] * (harvest[r, t]**(-1*beta)),0)
@@ -137,18 +137,11 @@ def MEESO(alpha=0.3, #effort scalar Fryxell et al., 2017
             	#effort[r,t+1] = 0#Fryxell et al 2017
            
             #calculate pristine baseline
-            #prist_meeso_baseline[r,t+1] = max(prist_meeso_baseline[r,t] * np.exp(rmax*(1-prist_meeso_baseline[r,t]/K)),0)#no catches
-            #rickert growth model:
-            #meeso[r,t+1] = max(meeso[r,t] * np.exp(rmax*(1-meeso[r,t]/K))-min(q*effort[r,t]*meeso[r,t],quota*meeso[r,t]),0)#harvest is capped by quota
-            
-            #prist_meeso_baseline[r,t+1] = max(prist_meeso_baseline[r,t] * np.exp(rmax*(1-prist_meeso_baseline[r,t]/K))-m*prist_meeso_baseline[r,t],0)#no catches
             prist_meeso_baseline[r,t+1] = max(prist_meeso_baseline[r,t] + rmax *prist_meeso_baseline[r,t]*(1-(prist_meeso_baseline[r,t]/K)),0)
             #gordon schaefer surplus production model:
-            #meeso[r,t+1] = max(meeso[r,t] * np.exp(rmax*(1-meeso[r,t]/K))-min(q*effort[r,t]*meeso[r,t],quota*meeso[r,t])-m*meeso[r,t],0)#harvest is capped by quota
             meeso[r,t+1] = max(meeso[r,t] + rmax * meeso[r,t]* (1-(meeso[r,t]/K))-harvest[r, t],0)#biomass + increase/decrease minus harvest 
             
             #harvest
-            #harvest[r, t+1] = harvest[r, t] + q*effort[r,t]*meeso[r,t]
             harvest[r, t+1] = q*effort[r,t]*meeso[r,t]
             
 
@@ -163,7 +156,7 @@ def MEESO(alpha=0.3, #effort scalar Fryxell et al., 2017
             total_seq[r,t+1] = seq_mort[r,t+1]+seq_fecal[r,t+1]+seq_resp[r,t+1] 
             
             
-            #sequestration without harvesting/pristine population (don't need this anymore given that initial mesopelagic is the same as carrying capacity)
+            #sequestration without harvesting/pristine population 
             seq_mort_pr[r,t+1] = seq_mort_pr[r,t]* (1-(1/mt)) + prist_meeso_baseline[r,t]*cv*m_f
             seq_fecal_pr[r,t+1] = seq_fecal_pr[r,t]* (1-(1/ft)) +  prist_meeso_baseline[r,t]*cv * f_f
             seq_resp_pr[r,t+1] = seq_resp_pr[r,t]* (1-(1/rt)) +  prist_meeso_baseline[r,t]*cv*r_f
